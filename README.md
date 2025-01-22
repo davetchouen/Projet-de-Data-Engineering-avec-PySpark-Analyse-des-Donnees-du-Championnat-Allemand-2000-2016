@@ -16,7 +16,7 @@ Problème : Les noms des colonnes dans le fichier CSV ne sont pas très clairs (
 
 Solution : Nous avons renommé ces colonnes avec des noms plus explicites, comme HomeTeamGoals, AwayTeamGoals, et FinalResult, pour faciliter la compréhension.
 
-# Suppression des Colonnes Inutiles
+### Suppression des Colonnes Inutiles
 
 Problème : Après avoir renommé les colonnes, certaines d'entre elles ne sont plus nécessaires.
 
