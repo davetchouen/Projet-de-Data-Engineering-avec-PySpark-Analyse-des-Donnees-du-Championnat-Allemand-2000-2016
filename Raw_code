@@ -1,0 +1,138 @@
+# Download necessary libraries
+!pip install pyspark
+
+# Import necessary libraries
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import *
+
+# Create a Spark session
+spark = SparkSession.builder.appName("DataAnalysis").getOrCreate()
+
+# Load the dataset
+df_matches = spark.read.format('csv').options(header = 'True').load('/content/drive/MyDrive/Colab Notebooks/data/football_matches.csv')
+
+# Preview of the data
+df_matches.toPandas()
+
+
+# Rename column names
+df_matches = df_matches.selectExpr(
+    "*",
+    "`FTHG` AS `HomeTeamGoals`",
+    "`FTAG` AS `AwayTeamGoals`",
+    "`FTR` AS `FinalResult`"
+)
+
+# Preview of the data
+df_matches.toPandas()
+
+
+# Delete FTHG, FTAG and FTR columns
+df_matches = df_matches.drop("FTHG", "FTAG", "FTR")
+
+# Preview of the data
+df_matches.toPandas()
+
+# Create binary columns for wins, losses and draws
+df_matches = df_matches.withColumn("HomeTeamWin", when(col("FinalResult") == "H", 1).otherwise(0)) \
+                        .withColumn("AwayTeamWin", when(col("FinalResult") == "A", 1).otherwise(0)) \
+                        .withColumn("GameTie", when(col("FinalResult") == "D", 1).otherwise(0))
+
+# Preview of the data
+df_matches.toPandas()
+
+# Create a dataframe containing only Bundesliga matches
+df_bundesliga = df_matches.filter((col('Div') == 'D1') &
+                            (col('Season') >= 2000) &
+                            (col('Season') <= 2015))
+# Preview of the data
+df_bundesliga.toPandas()
+
+
+# Create a dataframe containing statistics on home matches
+df_home_matches = df_bundesliga.groupby('Season', 'HomeTeam') \
+        .agg(sum('HomeTeamWin').alias('TotalHomeWin'),
+             sum('AwayTeamWin').alias('TotalHomeLoss'),
+             sum('GameTie').alias('TotalHomeTie'),
+             sum('HomeTeamGoals').alias('HomeScoredGoals'),
+             sum('AwayTeamGoals').alias('HomeAgainstGoals')) \
+        .withColumnRenamed('HomeTeam', 'Team')
+
+# Preview of the data
+df_home_matches.toPandas()
+
+
+# Create a dataframe containing statistics on away matches
+df_away_matches = df_bundesliga.groupby('Season', 'AwayTeam') \
+        .agg(sum('AwayTeamWin').alias('TotalAwayWin'),
+             sum('HomeTeamWin').alias('TotalAwayLoss'),
+             sum('GameTie').alias('TotalAwayTie'),
+             sum('AwayTeamGoals').alias('AwayScoredGoals'),
+             sum('HomeTeamGoals').alias('AwayAgainstGoals')) \
+        .withColumnRenamed('AwayTeam', 'Team')
+
+# Preview of the data
+df_away_matches.toPandas()
+
+
+# Join home and away data
+df_merged = df_home_matches.join(df_away_matches, ['Team', 'Season'], 'inner')
+
+# Preview of the data
+df_merged.toPandas()
+
+
+# Create columns for total scores and results
+df_totals = df_merged.withColumn('GoalsScored', col('HomeScoredGoals') + col('AwayScoredGoals')) \
+                      .withColumn('GoalsAgainst', col('HomeAgainstGoals') + col('AwayAgainstGoals')) \
+                      .withColumn('Win', col('TotalHomeWin') + col('TotalAwayWin')) \
+                      .withColumn('Loss', col('TotalHomeLoss') + col('TotalAwayLoss')) \
+                      .withColumn('Tie', col('TotalHomeTie') + col('TotalAwayTie'))
+
+# Preview of the data
+df_totals.toPandas()
+
+# Unnecessary columns
+cols_to_drop = ['HomeScoredGoals', 'AwayScoredGoals', 'HomeAgainstGoals', 'AwayAgainstGoals', 'TotalHomeWin',
+                'TotalAwayWin', 'TotalHomeLoss', 'TotalAwayLoss', 'TotalHomeTie', 'TotalAwayTie']
+
+# Drop unnecessary columns
+df_cleaned = df_totals.drop(*cols_to_drop)
+
+# Preview of the data
+df_cleaned.toPandas()
+
+
+# Create additional columns
+df_processed = df_cleaned.withColumn('GoalDifferentials', col('GoalsScored') - col('GoalsAgainst')) \
+                          .withColumn('WinPercentage', round((100 * col('Win') / (col('Win') + col('Loss') + col('Tie'))), 2))
+
+# Preview of the data
+df_processed.toPandas()
+
+# Set window for partition
+window_partition = Window.partitionBy('Season').orderBy(col('WinPercentage').desc(), col('GoalDifferentials').desc())
+
+# Rank teams by season
+df_ranked = df_processed.withColumn('TeamPosition', rank().over(window_partition))
+
+# Preview of the data
+df_ranked.toPandas()
+
+# Filter top teams
+df_top_teams = df_ranked.filter(col('TeamPosition') == 1)
+df_top_teams = df_top_teams.drop('TeamPosition')
+
+# Preview of the data
+df_top_teams.toPandas()
+
+
+
+
+
+
+
+
+
+
+
